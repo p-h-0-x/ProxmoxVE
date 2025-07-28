@@ -216,7 +216,7 @@ function default_settings() {
   VLAN=""
   MTU=""
   START_VM="yes"
-  CLOUD_INIT="no"
+  CLOUD_INIT="yes"
   METHOD="default"
   echo -e "${CONTAINERID}${BOLD}${DGN}Virtual Machine ID: ${BGN}${VMID}${CL}"
   echo -e "${CONTAINERTYPE}${BOLD}${DGN}Machine Type: ${BGN}i440fx${CL}"
@@ -230,7 +230,7 @@ function default_settings() {
   echo -e "${MACADDRESS}${BOLD}${DGN}MAC Address: ${BGN}${MAC}${CL}"
   echo -e "${VLANTAG}${BOLD}${DGN}VLAN: ${BGN}Default${CL}"
   echo -e "${DEFAULT}${BOLD}${DGN}Interface MTU Size: ${BGN}Default${CL}"
-  echo -e "${CLOUD}${BOLD}${DGN}Configure Cloud-init: ${BGN}no${CL}"
+  echo -e "${CLOUD}${BOLD}${DGN}Configure Cloud-init: ${BGN}yes (auto-install)${CL}"
   echo -e "${GATEWAY}${BOLD}${DGN}Start VM when completed: ${BGN}yes${CL}"
   echo -e "${CREATING}${BOLD}${DGN}Creating a PrusaSlicer VM using the above default settings${CL}"
 }
@@ -400,6 +400,9 @@ function advanced_settings() {
     exit-script
   fi
 
+  echo -e "${CLOUD}${BOLD}${DGN}Configure Cloud-init: ${BGN}yes (auto-install)${CL}"
+  CLOUD_INIT="yes"
+
   if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "START VIRTUAL MACHINE" --yesno "Start VM when completed?" 10 58); then
     echo -e "${GATEWAY}${BOLD}${DGN}Start VM when completed: ${BGN}yes${CL}"
     START_VM="yes"
@@ -466,7 +469,7 @@ fi
 msg_ok "Using ${CL}${BL}$STORAGE${CL} ${GN}for Storage Location."
 msg_ok "Virtual Machine ID is ${CL}${BL}$VMID${CL}."
 msg_info "Retrieving the URL for the Debian 12 Qcow2 Disk Image"
-URL=https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-nocloud-amd64.qcow2
+URL=https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2
 sleep 2
 msg_ok "${CL}${BL}${URL}${CL}"
 curl -f#SL -o "$(basename "$URL")" "$URL"
@@ -492,19 +495,20 @@ btrfs)
 esac
 for i in {0,1}; do
   disk="DISK$i"
-  eval DISK"${i}"=vm-"${VMID}"-disk-"${i}"${DISK_EXT:-}
-  eval DISK"${i}"_REF="${STORAGE}":"${DISK_REF:-}"${!disk}
+  eval DISK"${i}"=vm-"${VMID}"-disk-"${i}""${DISK_EXT:-}"
+  eval DISK"${i}"_REF="${STORAGE}":"${DISK_REF:-}""${!disk}"
 done
 
 msg_info "Creating a PrusaSlicer VM"
-qm create $VMID -agent 1${MACHINE} -tablet 0 -localtime 1 -bios ovmf${CPU_TYPE} -cores $CORE_COUNT -memory $RAM_SIZE \
-  -name $HN -tags community-script -net0 virtio,bridge=$BRG,macaddr=$MAC$VLAN$MTU -onboot 1 -ostype l26 -scsihw virtio-scsi-pci
-pvesm alloc $STORAGE $VMID $DISK0 4M 1>&/dev/null
+qm create "$VMID" -agent 1"${MACHINE}" -tablet 0 -localtime 1 -bios ovmf"${CPU_TYPE}" -cores "$CORE_COUNT" -memory "$RAM_SIZE" \
+  -name "$HN" -tags community-script -net0 virtio,bridge="$BRG",macaddr="$MAC""$VLAN""$MTU" -onboot 1 -ostype l26 -scsihw virtio-scsi-pci
+pvesm alloc "$STORAGE" "$VMID" "$DISK0" 4M 1>&/dev/null
 qm importdisk $VMID ${FILE} $STORAGE ${DISK_IMPORT:-} 1>&/dev/null
 
-qm set $VMID \
-  -efidisk0 ${DISK0_REF}${FORMAT} \
-  -scsi0 ${DISK1_REF},${DISK_CACHE}${THIN}size=${DISK_SIZE} \
+qm set "$VMID" \
+  -efidisk0 "${DISK0_REF}"${FORMAT} \
+  -scsi0 "${DISK1_REF}",${DISK_CACHE}${THIN}size="${DISK_SIZE}" \
+  -scsi1 "${STORAGE}":cloudinit \
   -boot order=scsi0 \
   -serial0 socket >/dev/null
 
@@ -539,7 +543,7 @@ DESCRIPTION=$(
 </div>
 EOF
 )
-qm set $VMID -description "$DESCRIPTION" >/dev/null
+qm set "$VMID" -description "$DESCRIPTION" >/dev/null
 
 if [ -n "$DISK_SIZE" ]; then
   msg_info "Resizing disk to $DISK_SIZE"
@@ -549,18 +553,82 @@ else
   qm resize "$VMID" scsi0 25G >/dev/null
 fi
 
+msg_info "Configuring Cloud-init for automatic PrusaSlicer setup"
+
+# Ensure snippets directory exists
+mkdir -p /var/lib/vz/snippets
+
+# Create cloud-init user-data for automatic installation
+cat <<EOF > /var/lib/vz/snippets/user-data-"${VMID}".yml
+#cloud-config
+hostname: $HN
+manage_etc_hosts: true
+
+users:
+  - name: prusaslicer
+    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
+    lock_passwd: false
+    passwd: \$6\$rounds=4096\$YQiQbOkn\$YhVdV2bJJAGg3bIzIoVVb4MG7CGGLSLnJRfGxlTgAVV1Jzr2YI2ZUWZQGdK8pWJa8M.8jY2LjEzN6QZ2oKpfR1
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - wget
+  - git
+
+runcmd:
+  - echo "Starting PrusaSlicer installation..." > /var/log/prusaslicer-setup.log
+  - wget -q -O /tmp/prusaslicer-install.sh https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/prusaslicer-install.sh
+  - chmod +x /tmp/prusaslicer-install.sh
+  - bash /tmp/prusaslicer-install.sh >> /var/log/prusaslicer-setup.log 2>&1
+  - systemctl enable vnc@prusaslicer >> /var/log/prusaslicer-setup.log 2>&1
+  - systemctl enable novnc >> /var/log/prusaslicer-setup.log 2>&1
+  - systemctl start vnc@prusaslicer >> /var/log/prusaslicer-setup.log 2>&1
+  - systemctl start novnc >> /var/log/prusaslicer-setup.log 2>&1
+  - echo "PrusaSlicer installation completed!" >> /var/log/prusaslicer-setup.log
+  - echo "Access via: http://\$(hostname -I | awk '{print \$1}'):6080" >> /var/log/prusaslicer-setup.log
+  - reboot
+
+final_message: |
+  PrusaSlicer VM setup complete!
+  Access the interface at: http://VM_IP:6080
+  Username: prusaslicer / Password: prusaslicer
+  Installation log: /var/log/prusaslicer-setup.log
+EOF
+
+# Set cloud-init configuration
+qm set "$VMID" \
+  --ciuser "prusaslicer" \
+  --cipassword "prusaslicer" \
+  --cicustom "user=local:snippets/user-data-${VMID}.yml" \
+  --ipconfig0 ip=dhcp >/dev/null
+
+msg_ok "Configured Cloud-init for automatic setup"
+
 msg_ok "Created a PrusaSlicer VM ${CL}${BL}(${HN})"
 if [ "$START_VM" == "yes" ]; then
   msg_info "Starting PrusaSlicer VM"
-  qm start $VMID
+  qm start "$VMID"
   msg_ok "Started PrusaSlicer VM"
 fi
 
 msg_ok "Completed Successfully!\n"
-echo -e "${INFO}${YW}Next Steps:${CL}"
-echo -e "${TAB}1. ${BGN}Boot the VM and log in via console${CL}"
-echo -e "${TAB}2. ${BGN}Run: wget -qO- https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/install/prusaslicer-install.sh | bash${CL}"
-echo -e "${TAB}3. ${BGN}Access PrusaSlicer via noVNC at: http://VM_IP:6080${CL}"
-echo -e "${TAB}4. ${BGN}Default credentials: prusaslicer / prusaslicer${CL}"
+echo -e "${INFO}${YW}PrusaSlicer VM Setup Complete!${CL}"
+echo -e "${TAB}${BGN}The VM will automatically install and configure PrusaSlicer on first boot${CL}"
+echo -e "${TAB}${BGN}This process takes 5-10 minutes - please be patient${CL}"
+echo ""
+echo -e "${INFO}${YW}Access Information:${CL}"
+echo -e "${TAB}${BGN}Web Interface: http://VM_IP:6080${CL}"
+echo -e "${TAB}${BGN}Username: prusaslicer${CL}"
+echo -e "${TAB}${BGN}Password: prusaslicer${CL}"
+echo ""
+echo -e "${INFO}${YW}Monitoring:${CL}"
+echo -e "${TAB}${BGN}Setup progress: tail -f /var/log/prusaslicer-setup.log${CL}"
+echo -e "${TAB}${BGN}VNC status: systemctl status vnc@prusaslicer${CL}"
+echo -e "${TAB}${BGN}noVNC status: systemctl status novnc${CL}"
 echo ""
 echo "More Info at https://github.com/community-scripts/ProxmoxVE"
