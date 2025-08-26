@@ -82,27 +82,47 @@ systemctl enable -q --now elasticsearch
 sleep 30
 
 # Set built-in user passwords
-/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -s -b <<< "verysecret"
+echo "verysecret" | $STD /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -i
 msg_ok "Setup Elasticsearch"
 
 msg_info "Installing Tube-Archivist"
+
 # Create tubearchivist user
-useradd --system --shell /bin/bash --home-dir /opt/tubearchivist --create-home tubearchivist
+msg_info "Creating tubearchivist user..."
+$STD adduser --system --shell /bin/bash --home-dir /opt/tubearchivist --create-home tubearchivist
+msg_info "✓ User created"
 
 # Get latest release and download  
+msg_info "Getting latest release..."
 cd /opt
 RELEASE=$(curl -fsSL https://api.github.com/repos/tubearchivist/tubearchivist/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4)}')
+msg_info "✓ Found release: $RELEASE"
+
+msg_info "Downloading release..."
 curl -fsSL "https://github.com/tubearchivist/tubearchivist/archive/refs/tags/v${RELEASE}.tar.gz" -o "v${RELEASE}.tar.gz"
+msg_info "✓ Downloaded tarball"
+
+msg_info "Extracting release..."
 $STD tar -xzf "v${RELEASE}.tar.gz"
 mv tubearchivist-"${RELEASE}" tubearchivist
 rm "v${RELEASE}.tar.gz"
+msg_info "✓ Extracted and organized"
 
 cd tubearchivist
+msg_info "✓ Changed to tubearchivist directory"
 
 # Create virtual environment and install dependencies
+msg_info "Creating Python virtual environment..."
 $STD python3 -m venv venv
+msg_info "✓ Virtual environment created"
+
+msg_info "Upgrading pip..."
 $STD /opt/tubearchivist/venv/bin/pip install --upgrade pip
+msg_info "✓ Pip upgraded"
+
+msg_info "Installing Python requirements..."
 $STD /opt/tubearchivist/venv/bin/pip install -r requirements.txt
+msg_info "✓ Requirements installed"
 
 # Create media directories
 mkdir -p /opt/tubearchivist/media/{youtube,cache}
@@ -203,11 +223,14 @@ $STD sudo -u tubearchivist /opt/tubearchivist/venv/bin/python manage.py migrate
 $STD sudo -u tubearchivist /opt/tubearchivist/venv/bin/python manage.py collectstatic --noinput
 
 # Create superuser
-$STD sudo -u tubearchivist /opt/tubearchivist/venv/bin/python manage.py shell -c "
+$STD sudo -u tubearchivist bash -c "
+source /opt/tubearchivist/venv/bin/activate
+python manage.py shell <<EOF
 from django.contrib.auth import get_user_model
 User = get_user_model()
 if not User.objects.filter(username='tubearchivist').exists():
     User.objects.create_superuser('tubearchivist', 'admin@tubearchivist.local', 'verysecret')
+EOF
 "
 msg_ok "Installed Tube-Archivist"
 
