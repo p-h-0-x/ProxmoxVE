@@ -82,7 +82,7 @@ systemctl enable -q --now elasticsearch
 sleep 30
 
 # Set built-in user passwords
-echo "verysecret" | $STD /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -i
+/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -s -b <<< "verysecret"
 msg_ok "Setup Elasticsearch"
 
 msg_info "Installing Tube-Archivist"
