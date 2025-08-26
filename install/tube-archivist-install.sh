@@ -139,7 +139,7 @@ else
 fi
 
 # Create required directories (matching Dockerfile volumes)
-mkdir -p /cache /youtube
+mkdir -p /cache /youtube /app/media /app/backend/static
 chown -R tubearchivist:tubearchivist /app /cache /youtube
 msg_info "✓ Directories created"
 
@@ -177,20 +177,16 @@ cat >/app/start.sh <<'EOF'
 set -e
 
 # Load environment
-export $(cat /app/.env | xargs)
+set -a
+source /app/.env
+set +a
 
 # Start services
 source /app/venv/bin/activate
-cd /app
-
-# Start nginx in background
-nginx &
-
-# Start celery worker in background
-celery -A config worker --loglevel=info &
+cd /app/backend
 
 # Start the main application
-exec python backend_start.py
+exec python manage.py runserver 0.0.0.0:8000
 EOF
 
 chmod +x /app/start.sh
@@ -220,6 +216,29 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+# Create celery service
+cat >/etc/systemd/system/celery-tubearchivist.service <<EOF
+[Unit]
+Description=Tube-Archivist Celery Worker
+After=network.target redis-server.service elasticsearch.service
+Requires=redis-server.service elasticsearch.service
+
+[Service]
+Type=simple
+User=tubearchivist
+Group=tubearchivist
+WorkingDirectory=/app/backend
+Environment="PATH=/app/venv/bin"
+ExecStart=/app/venv/bin/celery -A config worker --loglevel=info
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # Configure Nginx
 cat >/etc/nginx/sites-available/tubearchivist <<EOF
 server {
@@ -229,13 +248,13 @@ server {
     client_max_body_size 50M;
     
     location /static/ {
-        alias /opt/tubearchivist/static/;
+        alias /app/static/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
     
     location /media/ {
-        alias /opt/tubearchivist/media/;
+        alias /app/media/;
         expires 1d;
     }
     
@@ -253,9 +272,9 @@ ln -sf /etc/nginx/sites-available/tubearchivist /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 systemctl daemon-reload
-systemctl enable -q tubearchivist
+systemctl enable -q tubearchivist celery-tubearchivist
 systemctl restart -q nginx
-systemctl start -q tubearchivist
+systemctl start -q celery-tubearchivist tubearchivist
 msg_ok "Configured Services"
 
 motd_ssh
