@@ -30,7 +30,7 @@ function update_script() {
   fi
   
   msg_info "Updating ${APP}"
-  cd /opt/tubearchivist
+  cd /opt/tubearchivist || exit
   
   # Stop services
   systemctl stop tubearchivist celery-tubearchivist nginx
