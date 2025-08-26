@@ -108,8 +108,12 @@ mv tubearchivist-"${RELEASE}" tubearchivist
 rm "v${RELEASE}.tar.gz"
 msg_info "✓ Extracted and organized"
 
-cd tubearchivist
-msg_info "✓ Changed to tubearchivist directory"
+# Set up application directory structure (matching Dockerfile)
+msg_info "Setting up application structure..."
+mkdir -p /app
+mv tubearchivist/* /app/
+cd /app
+msg_info "✓ Application structure ready"
 
 # Create virtual environment and install dependencies
 msg_info "Creating Python virtual environment..."
@@ -117,128 +121,90 @@ $STD python3 -m venv venv
 msg_info "✓ Virtual environment created"
 
 msg_info "Upgrading pip..."
-$STD /opt/tubearchivist/venv/bin/pip install --upgrade pip
+$STD /app/venv/bin/pip install --upgrade pip
 msg_info "✓ Pip upgraded"
 
 msg_info "Installing Python requirements..."
-$STD /opt/tubearchivist/venv/bin/pip install -r requirements.txt
+$STD /app/venv/bin/pip install -r backend/requirements.txt
 msg_info "✓ Requirements installed"
 
-# Create media directories
-mkdir -p /opt/tubearchivist/media/{youtube,cache}
-chown -R tubearchivist:tubearchivist /opt/tubearchivist
+# Build frontend (simplified - without npm build process for now)
+msg_info "Setting up frontend..."
+mkdir -p /app/static
+if [ -d "frontend/dist" ]; then
+    cp -r frontend/dist/* /app/static/
+    msg_info "✓ Frontend files copied"
+else
+    msg_info "! Frontend dist not found, will use basic setup"
+fi
 
-# Configure Django settings
-cat >/opt/tubearchivist/tubearchivist/settings.py <<EOF
-import os
-from pathlib import Path
+# Create required directories (matching Dockerfile volumes)
+mkdir -p /cache /youtube
+chown -R tubearchivist:tubearchivist /app /cache /youtube
+msg_info "✓ Directories created"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-SECRET_KEY = '$(openssl rand -base64 32)'
-
-DEBUG = False
-
-ALLOWED_HOSTS = ['*']
-
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'rest_framework',
-    'corsheaders',
-    'home',
-]
-
-MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-]
-
-ROOT_URLCONF = 'config.urls'
-
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-            ],
-        },
-    },
-]
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'static'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = '/opt/tubearchivist/media'
-
-# Redis configuration
-REDIS_CON = 'redis://127.0.0.1:6379'
-
-# Elasticsearch configuration  
-ES_URL = 'http://127.0.0.1:9200'
-ELASTIC_PASSWORD = 'verysecret'
-
-# Celery configuration
-CELERY_BROKER_URL = REDIS_CON
-CELERY_RESULT_BACKEND = REDIS_CON
-
-# Application settings
-TA_HOST = 'http://localhost:8000'
-TA_USERNAME = 'tubearchivist'
-TA_PASSWORD = 'verysecret'
-
-TIME_ZONE = 'UTC'
-USE_TZ = True
+# Configure application environment
+msg_info "Setting up environment configuration..."
+cat >/app/.env <<EOF
+# Tube Archivist Environment Configuration
+ES_URL=http://127.0.0.1:9200
+REDIS_CON=redis://127.0.0.1:6379
+HOST_UID=0
+HOST_GID=0
+TA_HOST=http://localhost:8000
+TA_USERNAME=tubearchivist
+TA_PASSWORD=verysecret
+ELASTIC_PASSWORD=verysecret
+TZ=UTC
 EOF
+msg_info "✓ Environment configured"
 
-# Run Django migrations and create superuser
-cd /opt/tubearchivist
-$STD sudo -u tubearchivist /opt/tubearchivist/venv/bin/python manage.py migrate
-$STD sudo -u tubearchivist /opt/tubearchivist/venv/bin/python manage.py collectstatic --noinput
-
-# Create superuser
+# Initialize application (Django setup)
+msg_info "Initializing Tube-Archivist application..."
+cd /app
 $STD sudo -u tubearchivist bash -c "
-source /opt/tubearchivist/venv/bin/activate
-python manage.py shell <<EOF
-from django.contrib.auth import get_user_model
-User = get_user_model()
-if not User.objects.filter(username='tubearchivist').exists():
-    User.objects.create_superuser('tubearchivist', 'admin@tubearchivist.local', 'verysecret')
-EOF
+source /app/venv/bin/activate
+cd /app
+export $(cat .env | xargs)
+python manage.py migrate
+python manage.py collectstatic --noinput
 "
+msg_info "✓ Application initialized"
+
+# Create startup script (based on Dockerfile run.sh)
+msg_info "Creating startup script..."
+cat >/app/start.sh <<'EOF'
+#!/bin/bash
+set -e
+
+# Load environment
+export $(cat /app/.env | xargs)
+
+# Start services
+source /app/venv/bin/activate
+cd /app
+
+# Start nginx in background
+nginx &
+
+# Start celery worker in background
+celery -A config worker --loglevel=info &
+
+# Start the main application
+exec python backend_start.py
+EOF
+
+chmod +x /app/start.sh
+chown tubearchivist:tubearchivist /app/start.sh
+msg_info "✓ Startup script created"
+
 msg_ok "Installed Tube-Archivist"
 
 msg_info "Configuring Services"
-# Create systemd service for Tube-Archivist
+# Create systemd service for Tube-Archivist (single service now handles everything)
 cat >/etc/systemd/system/tubearchivist.service <<EOF
 [Unit]
-Description=Tube-Archivist Django Application
+Description=Tube-Archivist Application
 After=network.target elasticsearch.service redis-server.service
 Requires=elasticsearch.service redis-server.service
 
@@ -246,30 +212,8 @@ Requires=elasticsearch.service redis-server.service
 Type=exec
 User=tubearchivist
 Group=tubearchivist
-WorkingDirectory=/opt/tubearchivist
-Environment=PATH=/opt/tubearchivist/venv/bin
-ExecStart=/opt/tubearchivist/venv/bin/python manage.py runserver 0.0.0.0:8000
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Create systemd service for Celery
-cat >/etc/systemd/system/celery-tubearchivist.service <<EOF
-[Unit]
-Description=Tube-Archivist Celery Worker
-After=network.target redis-server.service
-Requires=redis-server.service
-
-[Service]
-Type=exec
-User=tubearchivist
-Group=tubearchivist
-WorkingDirectory=/opt/tubearchivist
-Environment=PATH=/opt/tubearchivist/venv/bin
-ExecStart=/opt/tubearchivist/venv/bin/celery -A config worker -l info
+WorkingDirectory=/app
+ExecStart=/app/start.sh
 Restart=always
 RestartSec=10
 
@@ -310,9 +254,9 @@ ln -sf /etc/nginx/sites-available/tubearchivist /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 systemctl daemon-reload
-systemctl enable -q tubearchivist celery-tubearchivist
+systemctl enable -q tubearchivist
 systemctl restart -q nginx
-systemctl start -q celery-tubearchivist tubearchivist
+systemctl start -q tubearchivist
 msg_ok "Configured Services"
 
 motd_ssh
