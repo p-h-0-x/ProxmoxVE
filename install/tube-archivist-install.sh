@@ -82,14 +82,14 @@ systemctl enable -q --now elasticsearch
 sleep 30
 
 # Set built-in user passwords
-/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -s -b <<< "verysecret"
+/usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -s -b <<< "verysecret" >/dev/null 2>&1
 msg_ok "Setup Elasticsearch"
 
 msg_info "Installing Tube-Archivist"
 
 # Create tubearchivist user
 msg_info "Creating tubearchivist user..."
-$STD adduser --system --shell /bin/bash --home-dir /opt/tubearchivist --create-home tubearchivist
+$STD adduser --system --group tubearchivist
 msg_info "✓ User created"
 
 # Get latest release and download  
