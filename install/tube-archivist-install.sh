@@ -28,7 +28,10 @@ $STD apt-get install -y \
   libssl-dev \
   ffmpeg \
   atomicparsley \
-  openjdk-17-jre-headless
+  openjdk-17-jre-headless \
+  lsb-release \
+  apt-transport-https \
+  gnupg2
 msg_ok "Installed Dependencies"
 
 msg_info "Setting up Redis"
