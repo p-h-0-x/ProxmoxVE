@@ -39,8 +39,7 @@ curl -fsSL "https://packages.redis.io/gpg" | gpg --dearmor >/usr/share/keyrings/
 echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" >/etc/apt/sources.list.d/redis.list
 $STD apt-get update
 $STD apt-get install -y redis
-systemctl enable redis-server
-systemctl start redis-server
+systemctl enable -q --now redis-server
 msg_ok "Setup Redis"
 
 msg_info "Setting up Elasticsearch"
@@ -77,8 +76,7 @@ chown elasticsearch:elasticsearch /var/lib/elasticsearch/snapshot
 # Install ingest-attachment plugin
 $STD /usr/share/elasticsearch/bin/elasticsearch-plugin install ingest-attachment
 
-systemctl enable elasticsearch
-systemctl start elasticsearch
+systemctl enable -q --now elasticsearch
 
 # Wait for Elasticsearch to start
 sleep 30
@@ -91,13 +89,13 @@ msg_info "Installing Tube-Archivist"
 # Create tubearchivist user
 useradd --system --shell /bin/bash --home-dir /opt/tubearchivist --create-home tubearchivist
 
-# Get latest release and download
+# Get latest release and download  
 cd /opt
 RELEASE=$(curl -fsSL https://api.github.com/repos/tubearchivist/tubearchivist/releases/latest | grep "tag_name" | awk '{print substr($2, 3, length($2)-4)}')
-$STD wget -q "https://github.com/tubearchivist/tubearchivist/archive/refs/tags/v${RELEASE}.tar.gz" -O "tubearchivist-${RELEASE}.tar.gz"
-$STD tar -xzf "tubearchivist-${RELEASE}.tar.gz"
-mv "tubearchivist-${RELEASE}" tubearchivist
-rm "tubearchivist-${RELEASE}.tar.gz"
+curl -fsSL "https://github.com/tubearchivist/tubearchivist/archive/refs/tags/v${RELEASE}.tar.gz" -o "v${RELEASE}.tar.gz"
+$STD tar -xzf "v${RELEASE}.tar.gz"
+mv tubearchivist-"${RELEASE}" tubearchivist
+rm "v${RELEASE}.tar.gz"
 
 cd tubearchivist
 
@@ -289,9 +287,9 @@ ln -sf /etc/nginx/sites-available/tubearchivist /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 systemctl daemon-reload
-systemctl enable tubearchivist celery-tubearchivist
-systemctl restart nginx
-systemctl start celery-tubearchivist tubearchivist
+systemctl enable -q tubearchivist celery-tubearchivist
+systemctl restart -q nginx
+systemctl start -q celery-tubearchivist tubearchivist
 msg_ok "Configured Services"
 
 motd_ssh
