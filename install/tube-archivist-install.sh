@@ -183,7 +183,7 @@ set +a
 
 # Start services
 source /app/venv/bin/activate
-cd /app/backend
+cd /app
 
 # Start the main application
 exec python manage.py runserver 0.0.0.0:8000
@@ -227,7 +227,7 @@ Requires=redis-server.service elasticsearch.service
 Type=simple
 User=tubearchivist
 Group=tubearchivist
-WorkingDirectory=/app/backend
+WorkingDirectory=/app
 Environment="PATH=/app/venv/bin"
 ExecStart=/app/venv/bin/celery -A config worker --loglevel=info
 Restart=always
