@@ -164,8 +164,7 @@ msg_info "Initializing Tube-Archivist application..."
 cd /app
 $STD sudo -u tubearchivist bash -c "
 source /app/venv/bin/activate
-cd /app
-export $(cat .env | xargs)
+cd /app/backend
 python manage.py migrate
 python manage.py collectstatic --noinput
 "
