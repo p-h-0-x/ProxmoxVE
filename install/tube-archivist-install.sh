@@ -193,9 +193,9 @@ Requires=elasticsearch.service redis-server.service
 Type=exec
 User=tubearchivist
 Group=tubearchivist
-WorkingDirectory=/app/backend
+WorkingDirectory=/app
 EnvironmentFile=/app/.env
-ExecStart=/app/venv/bin/python manage.py runserver 0.0.0.0:8000
+ExecStart=/app/docker_assets/run.sh
 Restart=always
 RestartSec=10
 
@@ -226,37 +226,11 @@ KillSignal=SIGTERM
 WantedBy=multi-user.target
 EOF
 
-# Configure Nginx
-cat >/etc/nginx/sites-available/tubearchivist <<EOF
-server {
-    listen 80;
-    server_name _;
-    
-    client_max_body_size 50M;
-    
-    location /static/ {
-        alias /app/static/;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-    
-    location /media/ {
-        alias /app/media/;
-        expires 1d;
-    }
-    
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
+# Configure Nginx (using the original nginx.conf from source)
+cp /app/docker_assets/nginx.conf /etc/nginx/sites-available/default
 
-ln -sf /etc/nginx/sites-available/tubearchivist /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
+# Set nginx to run as root (like in Dockerfile)
+sed -i 's/^user www-data;$/user root;/' /etc/nginx/nginx.conf
 
 systemctl daemon-reload
 systemctl enable -q tubearchivist celery-tubearchivist
