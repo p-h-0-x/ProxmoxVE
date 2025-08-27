@@ -170,28 +170,6 @@ python manage.py collectstatic --noinput
 "
 msg_info "✓ Application initialized"
 
-# Create startup script (based on Dockerfile run.sh)
-msg_info "Creating startup script..."
-cat >/app/start.sh <<'EOF'
-#!/bin/bash
-set -e
-
-# Load environment
-set -a
-source /app/.env
-set +a
-
-# Start services
-source /app/venv/bin/activate
-cd /app
-
-# Start the main application
-exec python manage.py runserver 0.0.0.0:8000
-EOF
-
-chmod +x /app/start.sh
-chown tubearchivist:tubearchivist /app/start.sh
-msg_info "✓ Startup script created"
 
 msg_ok "Installed Tube-Archivist"
 
@@ -207,8 +185,9 @@ Requires=elasticsearch.service redis-server.service
 Type=exec
 User=tubearchivist
 Group=tubearchivist
-WorkingDirectory=/app
-ExecStart=/app/start.sh
+WorkingDirectory=/app/backend
+EnvironmentFile=/app/.env
+ExecStart=/app/venv/bin/python manage.py runserver 0.0.0.0:8000
 Restart=always
 RestartSec=10
 
