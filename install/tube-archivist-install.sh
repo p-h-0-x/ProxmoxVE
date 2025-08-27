@@ -203,29 +203,6 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Create celery service
-cat >/etc/systemd/system/celery-tubearchivist.service <<EOF
-[Unit]
-Description=Tube-Archivist Celery Worker
-After=network.target redis-server.service elasticsearch.service
-Requires=redis-server.service elasticsearch.service
-
-[Service]
-Type=simple
-User=tubearchivist
-Group=tubearchivist
-WorkingDirectory=/app/backend
-EnvironmentFile=/app/.env
-Environment="PATH=/app/venv/bin"
-ExecStart=/app/venv/bin/celery -A config worker --loglevel=info
-Restart=always
-RestartSec=10
-KillMode=mixed
-KillSignal=SIGTERM
-
-[Install]
-WantedBy=multi-user.target
-EOF
 
 # Configure Nginx (using the original nginx.conf from source)
 cp /app/docker_assets/nginx.conf /etc/nginx/sites-available/default
@@ -234,9 +211,9 @@ cp /app/docker_assets/nginx.conf /etc/nginx/sites-available/default
 sed -i 's/^user www-data;$/user root;/' /etc/nginx/nginx.conf
 
 systemctl daemon-reload
-systemctl enable -q tubearchivist celery-tubearchivist
+systemctl enable -q tubearchivist
 systemctl restart -q nginx
-systemctl start -q celery-tubearchivist tubearchivist
+systemctl start -q tubearchivist
 msg_ok "Configured Services"
 
 motd_ssh
