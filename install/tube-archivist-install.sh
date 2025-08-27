@@ -20,7 +20,7 @@ $STD apt-get install -y \
   nginx \
   python3 \
   python3-pip \
-  python3-venv \
+  python-is-python3 \
   python3-dev \
   build-essential \
   libldap2-dev \
@@ -123,17 +123,12 @@ mv tubearchivist/* /app/
 cd /app
 msg_info "✓ Application structure ready"
 
-# Create virtual environment and install dependencies
-msg_info "Creating Python virtual environment..."
-$STD python3 -m venv venv
-msg_info "✓ Virtual environment created"
-
 msg_info "Upgrading pip..."
-$STD /app/venv/bin/pip install --upgrade pip
+$STD pip install --upgrade pip
 msg_info "✓ Pip upgraded"
 
 msg_info "Installing Python requirements..."
-$STD /app/venv/bin/pip install -r backend/requirements.txt
+$STD pip install -r backend/requirements.txt
 msg_info "✓ Requirements installed"
 
 # Build frontend (simplified - without npm build process for now)
@@ -171,7 +166,6 @@ msg_info "✓ Environment configured"
 msg_info "Initializing Tube-Archivist application..."
 cd /app
 $STD sudo -u tubearchivist bash -c "
-source /app/venv/bin/activate
 cd /app/backend
 python manage.py migrate
 python manage.py collectstatic --noinput
@@ -202,7 +196,6 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-
 
 # Configure Nginx (using the original nginx.conf from source)
 cp /app/docker_assets/nginx.conf /etc/nginx/sites-available/default
