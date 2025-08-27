@@ -214,7 +214,8 @@ Requires=redis-server.service elasticsearch.service
 Type=simple
 User=tubearchivist
 Group=tubearchivist
-WorkingDirectory=/app
+WorkingDirectory=/app/backend
+EnvironmentFile=/app/.env
 Environment="PATH=/app/venv/bin"
 ExecStart=/app/venv/bin/celery -A config worker --loglevel=info
 Restart=always
