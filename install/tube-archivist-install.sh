@@ -130,11 +130,11 @@ chmod +x /app/run.sh
 msg_info "✓ Application structure ready"
 
 msg_info "Upgrading pip..."
-$STD python -m pip install --user --upgrade pip
+$STD sudo -u tubearchivist python -m pip install --user --upgrade pip
 msg_info "✓ Pip upgraded"
 
 msg_info "Installing Python requirements..."
-$STD python -m pip install --user -r /app/requirements.txt
+$STD sudo -u tubearchivist python -m pip install --user -r /app/requirements.txt
 msg_info "✓ Requirements installed"
 
 # Build frontend (simplified - without npm build process for now)
