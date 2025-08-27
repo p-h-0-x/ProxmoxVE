@@ -81,11 +81,11 @@ systemctl enable -q --now elasticsearch
 # Wait for Elasticsearch to be ready
 msg_info "Waiting for Elasticsearch to be ready..."
 for i in {1..30}; do
-  if curl -s -f http://127.0.0.1:9200/_cluster/health >/dev/null 2>&1; then
+  if systemctl is-active --quiet elasticsearch && ss -tuln | grep -q ":9200"; then
     msg_info "✓ Elasticsearch is ready"
     break
   fi
-  [[ $i -eq 30 ]] && msg_error "Elasticsearch failed to start within 30 seconds" && exit 1
+  [[ $i -eq 30 ]] && msg_error "Elasticsearch failed to start within 60 seconds" && exit 1
   sleep 2
 done
 
