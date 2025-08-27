@@ -113,6 +113,7 @@ msg_info "✓ Downloaded tarball"
 msg_info "Extracting release..."
 $STD tar -xzf "v${RELEASE}.tar.gz"
 mv tubearchivist-"${RELEASE}" tubearchivist
+chmod +x tubearchivist/docker_assets/run.sh
 rm "v${RELEASE}.tar.gz"
 msg_info "✓ Extracted and organized"
 
