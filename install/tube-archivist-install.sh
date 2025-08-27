@@ -120,16 +120,21 @@ msg_info "✓ Extracted and organized"
 # Set up application directory structure (matching Dockerfile)
 msg_info "Setting up application structure..."
 mkdir -p /app
-mv tubearchivist/* /app/
-cd /app
+
+# Copy backend files to /app (like Dockerfile COPY /backend /app)
+cp -r tubearchivist/backend/* /app/
+# Copy docker assets
+cp -r tubearchivist/docker_assets /app/
+chmod +x /app/run.sh
+
 msg_info "✓ Application structure ready"
 
 msg_info "Upgrading pip..."
-$STD pip install --upgrade pip
+$STD python -m pip install --user --upgrade pip
 msg_info "✓ Pip upgraded"
 
 msg_info "Installing Python requirements..."
-$STD pip install -r backend/requirements.txt
+$STD python -m pip install --user -r /app/requirements.txt
 msg_info "✓ Requirements installed"
 
 # Build frontend (simplified - without npm build process for now)
@@ -165,9 +170,9 @@ msg_info "✓ Environment configured"
 
 # Initialize application (Django setup)
 msg_info "Initializing Tube-Archivist application..."
-cd /app
 $STD sudo -u tubearchivist bash -c "
-cd /app/backend
+export PATH=/root/.local/bin:\$PATH
+cd /app
 python manage.py migrate
 python manage.py collectstatic --noinput
 "
