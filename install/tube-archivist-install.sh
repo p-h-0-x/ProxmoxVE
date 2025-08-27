@@ -124,7 +124,7 @@ mkdir -p /app
 # Copy backend files to /app (like Dockerfile COPY /backend /app)
 cp -r tubearchivist/backend/* /app/
 # Copy docker assets
-cp -r tubearchivist/docker_assets /app/
+cp -r tubearchivist/docker_assets/* /app/
 chmod +x /app/run.sh
 
 msg_info "✓ Application structure ready"
